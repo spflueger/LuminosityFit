@@ -19,6 +19,13 @@ def check_ip_params_zero(ip_params):
     return True
 
 
+def check_positive(value):
+    ivalue = int(value)
+    if ivalue <= 0:
+        raise argparse.ArgumentTypeError("%s is an invalid positive int value" % value)
+    return ivalue
+
+
 simulation_types = ['box', 'dpm_elastic',
                     'dpm_elastic_inelastic', 'noise']
 
@@ -31,7 +38,10 @@ def addArgumentsToParser(parser):
                         'following: box, dpm_elastic, dpm_elastic_inelastic, '
                         'noise.\nThis information is used to automatically '
                         'obtain the generator data and output naming scheme.')
-
+    parser.add_argument('--tracks_per_event', metavar='tracks_per_event', type=check_positive,
+                        help='Tracks per event, actually combines several events '
+                        'into a single event. Currently only works for elastic '
+                        'event generation! Default: 1')
     parser.add_argument('--theta_min', metavar='theta_min', type=float,
                         help='Minimal value of the scattering angle theta in '
                         'mrad. Default: 2.7')
@@ -87,6 +97,7 @@ def createSimulationParameters(sim_type):
         raise ValueError("specified simulation type is invalid!")
     sim_params = {
         'sim_type': sim_type,
+        'tracks_per_event': 1,
         'theta_min_in_mrad': 2.7,
         'theta_max_in_mrad': 13.0,
         'neglect_recoil_momentum': False,
@@ -111,6 +122,8 @@ def createSimulationParameters(sim_type):
 
 def addSimulationParametersToConfig(params, args):
     sim_params = createSimulationParameters(args.sim_type[0])
+    if args.tracks_per_event:
+        sim_params['tracks_per_event'] = args.tracks_per_event
     if args.theta_min:
         sim_params['theta_min_in_mrad'] = args.theta_min
     if args.theta_max:
@@ -162,18 +175,18 @@ def generateDirectory(sim_params, align_params, output_dir=''):
 
         if not check_ip_params_zero(sim_params['ip_params']):
             dirname += '/ip_offset_XYZDXDYDZ_'\
-                + str(sim_params['ip_params']['ip_offset_x'])+'_'\
-                + str(sim_params['ip_params']['ip_offset_y'])+'_'\
-                + str(sim_params['ip_params']['ip_offset_z'])+'_'\
-                + str(sim_params['ip_params']['ip_spread_x'])+'_'\
-                + str(sim_params['ip_params']['ip_spread_y'])+'_'\
-                + str(sim_params['ip_params']['ip_spread_z'])
+                +str(sim_params['ip_params']['ip_offset_x']) + '_'\
+                +str(sim_params['ip_params']['ip_offset_y']) + '_'\
+                +str(sim_params['ip_params']['ip_offset_z']) + '_'\
+                +str(sim_params['ip_params']['ip_spread_x']) + '_'\
+                +str(sim_params['ip_params']['ip_spread_y']) + '_'\
+                +str(sim_params['ip_params']['ip_spread_z'])
 
             dirname += '/beam_grad_XYDXDY_'\
-                + str(sim_params['ip_params']['beam_tilt_x'])+'_'\
-                + str(sim_params['ip_params']['beam_tilt_y'])+'_'\
-                + str(sim_params['ip_params']['beam_divergence_x'])+'_'\
-                + str(sim_params['ip_params']['beam_divergence_y'])
+                +str(sim_params['ip_params']['beam_tilt_x']) + '_'\
+                +str(sim_params['ip_params']['beam_tilt_y']) + '_'\
+                +str(sim_params['ip_params']['beam_divergence_x']) + '_'\
+                +str(sim_params['ip_params']['beam_divergence_y'])
 
         # dirname += '/' + str(os.path.splitext(sim_params['lmd_geometry_filename'])[0])
         if (align_params['use_point_transform_misalignment'] or
@@ -184,7 +197,9 @@ def generateDirectory(sim_params, align_params, output_dir=''):
                 str(os.path.splitext(os.path.basename(
                     align_params['misalignment_matrices_path']))[0])
 
-        dirname += '/' + str(sim_params['num_events_per_sample'])
+        dirname += '/' + str(sim_params['num_events_per_sample'])\
+                       + 'x' + str(sim_params['tracks_per_event'])
+        
     else:
         dirname = output_dir
 
@@ -195,8 +210,8 @@ def startSimulationAndReconstruction(sim_params, align_params, reco_params,
                                      output_dir='', force_level=0, debug=False,
                                      use_devel_queue=False):
     print('preparing simulations in index range '
-          + str(sim_params['low_index']) + ' - '
-          + str(sim_params['low_index']+sim_params['num_samples']-1))
+          +str(sim_params['low_index']) + ' - '
+          +str(sim_params['low_index'] + sim_params['num_samples'] - 1))
 
     dirname = generateDirectory(sim_params, align_params, output_dir)
     dirname_filter_suffix = rec.generateRecoDirSuffix(
@@ -236,7 +251,7 @@ def startSimulationAndReconstruction(sim_params, align_params, reco_params,
                       " already exists! Skipping...")
                 return (pathname_full, True)
         else:
-            if len(reco_files) >= int(0.8*total_requested_jobs):
+            if len(reco_files) >= int(0.8 * total_requested_jobs):
                 print("directory with at least 80% (compared to requested"
                       " number of simulated files) of fully reconstructed"
                       " track files already exists! Skipping...")
@@ -247,10 +262,11 @@ def startSimulationAndReconstruction(sim_params, align_params, reco_params,
         # determine the elastic cross section in the theta range
         bashcommand = os.getenv('LMDFIT_BUILD_PATH') + \
             '/bin/generatePbarPElasticScattering ' + \
-            str(sim_params['lab_momentum']) + ' 0 -l ' + \
-            str(sim_params['theta_min_in_mrad']) + ' -u ' + \
-            str(sim_params['theta_max_in_mrad']) + ' -o ' + \
-            pathname_base+"/elastic_cross_section.txt"
+            str(sim_params['lab_momentum']) + ' 0' + \
+            ' -t ' + str(sim_params['tracks_per_event']) + \
+            ' -l ' + str(sim_params['theta_min_in_mrad']) + \
+            ' -u ' + str(sim_params['theta_max_in_mrad']) + \
+            ' -o ' + pathname_base + "/elastic_cross_section.txt"
         
         returnvalue = subprocess.call(bashcommand.split())
 
@@ -283,7 +299,7 @@ def startSimulationAndReconstruction(sim_params, align_params, reco_params,
 
     joblist = []
 
-    resource_request = himster.JobResourceRequest(12*60)
+    resource_request = himster.JobResourceRequest(12 * 60)
     resource_request.number_of_nodes = 1
     resource_request.processors_per_node = 1
     resource_request.memory_in_mb = 3000
@@ -296,7 +312,7 @@ def startSimulationAndReconstruction(sim_params, align_params, reco_params,
                       'lmd_simreco_' + sim_type,
                       pathname_full + '/simreco-%a.log')
     job.set_job_array_indices(
-        list(range(low_index_used, low_index_used+num_samples)))
+        list(range(low_index_used, low_index_used + num_samples)))
 
     job.add_exported_user_variable('force_level', force_level)
 
@@ -306,6 +322,8 @@ def startSimulationAndReconstruction(sim_params, align_params, reco_params,
         'num_evts', str(sim_params['num_events_per_sample']))
     job.add_exported_user_variable('mom', str(sim_params['lab_momentum']))
     job.add_exported_user_variable('reaction_type', reaction_type)
+    job.add_exported_user_variable(
+        'tracks_per_event', sim_params['tracks_per_event'])
     job.add_exported_user_variable(
         'theta_min_in_mrad', sim_params['theta_min_in_mrad'])
     job.add_exported_user_variable(

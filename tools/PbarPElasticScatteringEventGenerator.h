@@ -22,7 +22,12 @@
 namespace PbarPElasticScattering {
 
 std::pair<TTree*, double> generateEvents(double momentum, unsigned int num_events,
-    double theta_min_in_mrad, double theta_max_in_mrad, unsigned int seed) {
+    unsigned int tracks_per_event, double theta_min_in_mrad, double theta_max_in_mrad,
+    unsigned int seed) {
+  if (tracks_per_event == 0) {
+    throw std::runtime_error("generateEvents(): tracks per event is zero!");
+  }
+
   PndLmdModelFactory model_factory;
 
   boost::property_tree::ptree base_model_opt;
@@ -70,10 +75,10 @@ std::pair<TTree*, double> generateEvents(double momentum, unsigned int num_event
       << " mb" << std::endl;
 
   if (num_events == 0) {
-    return std::make_pair(nullptr, integral);
+    return std::make_pair(nullptr, integral * tracks_per_event);
   }
 
-  TClonesArray ca("TParticle", 2);
+  TClonesArray ca("TParticle", 2 * tracks_per_event);
   TClonesArray *pars = &ca;
 
   TTree *tree = new TTree("data", "data");
@@ -104,40 +109,42 @@ std::pair<TTree*, double> generateEvents(double momentum, unsigned int num_event
   duration<double> time_span_correct;
   high_resolution_clock::time_point t1 = high_resolution_clock::now();
   for (unsigned int i = 0; i < num_events; ++i) {
-    mydouble t = RandomGen.Uniform(t_min, t_max);
-    mydouble funcval = correct_model->eval(&t);
-    double randval = RandomGen2.Uniform(0.0, func_max);
-    if (funcval > func_max) {
-      std::cout << "Error: function maximum was determined not large enough...\n";
-      std::cout << "function evaluation: " << funcval << "\n";
-      std::cout << "function maximum was determined as: " << func_max << "\n";
+    for (unsigned int itrack = 0; itrack < tracks_per_event; ++itrack) {
+      mydouble t = RandomGen.Uniform(t_min, t_max);
+      mydouble funcval = correct_model->eval(&t);
+      double randval = RandomGen2.Uniform(0.0, func_max);
+      if (funcval > func_max) {
+        std::cout << "Error: function maximum was determined not large enough...\n";
+        std::cout << "function evaluation: " << funcval << "\n";
+        std::cout << "function maximum was determined as: " << func_max << "\n";
+      }
+      if (randval > funcval) {
+        --itrack;
+        continue;
+      }
+
+      double phi = RandomGen3.Uniform(fPhiMin, fPhiMax);
+      double costheta = 1.0 - 0.5 * t / Pcms2;
+      double sintheta = std::sqrt(std::abs(1.0 - std::pow(costheta, 2)));
+
+      double pz = Pcms * costheta;
+      double pt = Pcms * sintheta;
+      double px = pt * std::cos(phi);
+      double py = pt * std::sin(phi);
+
+      TLorentzVector vertex(0, 0, 0, 0);
+
+      double E(std::sqrt(mass_proton * mass_proton + px * px + py * py + pz * pz));
+      TLorentzVector mom_pbar(px, py, pz, E);
+      TLorentzVector mom_p(-px, -py, -pz, E);
+      // boost to lab
+      mom_pbar.Boost(boost_vector);
+      mom_p.Boost(boost_vector);
+      //Gamma = (Elab + AMProton) / SqrtS
+
+      new (ca[2 * itrack]) TParticle(-2212, 1, 0, 0, 0, 0, mom_pbar, vertex);
+      new (ca[2 * itrack + 1]) TParticle(2212, 1, 0, 0, 0, 0, mom_p, vertex);
     }
-    if (randval > funcval) {
-      --i;
-      continue;
-    }
-
-    double phi = RandomGen3.Uniform(fPhiMin, fPhiMax);
-    double costheta = 1.0 - 0.5 * t / Pcms2;
-    double sintheta = std::sqrt(std::abs(1.0 - std::pow(costheta, 2)));
-
-    double pz = Pcms * costheta;
-    double pt = Pcms * sintheta;
-    double px = pt * std::cos(phi);
-    double py = pt * std::sin(phi);
-
-    TLorentzVector vertex(0, 0, 0, 0);
-
-    double E(std::sqrt(mass_proton * mass_proton + px * px + py * py + pz * pz));
-    TLorentzVector mom_pbar(px, py, pz, E);
-    TLorentzVector mom_p(-px, -py, -pz, E);
-    // boost to lab
-    mom_pbar.Boost(boost_vector);
-    mom_p.Boost(boost_vector);
-    //Gamma = (Elab + AMProton) / SqrtS
-
-    new (ca[0]) TParticle(-2212, 1, 0, 0, 0, 0, mom_pbar, vertex);
-    new (ca[1]) TParticle(2212, 1, 0, 0, 0, 0, mom_p, vertex);
 
     tree->Fill();
     ca.Delete();

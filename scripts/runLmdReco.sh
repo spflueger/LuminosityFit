@@ -76,6 +76,7 @@ if [ 0 -eq "$?" ] || [ 1 -eq "${force_level}" ]; then
   root -l -b -q 'runLumiPixel2bHitMerge.C('${num_evts}','${start_evt}',"'${workpathname}'",'$verbositylvl')'
 fi
 
+exit 0
 cd $scriptpath
 ./runLmdPairFinder.sh
 ./runLmdTrackFinder.sh

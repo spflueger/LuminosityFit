@@ -19,6 +19,7 @@ void displayInfo() {
   std::cout << "[pbar momentum]" << std::endl;
   std::cout << "[number of events]" << std::endl;
   std::cout << "Optional arguments are: " << std::endl;
+  std::cout << "-t [tracks per event] (default: 1)\n";
   std::cout << "-l [lower theta boundary in mrad] (default: 2mrad)" << std::endl;
   std::cout << "-u [upper theta boundary in mrad] (default: 12mrad)" << std::endl;
   std::cout << "-o [output filepath] (default: dpmgen.root)" << std::endl;
@@ -30,12 +31,16 @@ int main(int argc, char* argv[]) {
   double upper_bound = 12.0;
   std::string output_filepath = "dpmgen.root";
   unsigned int seed = 12345;
+  unsigned int tracks_per_event(1);
   int c;
 
-  while ((c = getopt(argc, argv, "hl:u:o:s:")) != -1) {
+  while ((c = getopt(argc, argv, "ht:l:u:o:s:")) != -1) {
     switch (c) {
       case 'o':
         output_filepath = optarg;
+        break;
+      case 't':
+        tracks_per_event = std::stoul(optarg);
         break;
       case 's':
         seed = std::stoul(optarg);
@@ -47,7 +52,7 @@ int main(int argc, char* argv[]) {
         upper_bound = std::stod(optarg);
         break;
       case '?':
-        if (optopt == 'l' || optopt == 'u' || optopt == 'o' || optopt == 's')
+        if (optopt == 'l' || optopt == 't' || optopt == 'u' || optopt == 'o' || optopt == 's')
           std::cerr << "Option -" << optopt << " requires an argument." << std::endl;
         else if (isprint(optopt))
           std::cerr << "Unknown option -" << optopt << "." << std::endl;
@@ -65,8 +70,8 @@ int main(int argc, char* argv[]) {
   if (argc - optind == 2) {
     double momentum = std::stod(argv[optind]);
     unsigned int num_events = std::stoul(argv[optind + 1]);
-    auto result = PbarPElasticScattering::generateEvents(momentum, num_events, lower_bound,
-        upper_bound, seed);
+    auto result = PbarPElasticScattering::generateEvents(momentum, num_events, tracks_per_event,
+        lower_bound, upper_bound, seed);
 
     if (num_events == 0) {
       boost::filesystem::path cs_filepath(output_filepath);
